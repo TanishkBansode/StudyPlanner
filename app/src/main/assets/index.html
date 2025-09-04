@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -38,7 +39,7 @@
             display: flex;
             margin-bottom: 20px;
         }
-        input[type="text"], input[type="time"] {
+        input[type="text"], input[type="time"], input[type="number"] {
             flex: 1;
             padding: 10px;
             border: 1px solid var(--border-color);
@@ -46,7 +47,7 @@
             outline: none;
             transition: border-color 0.2s;
         }
-        input[type="text"]:focus, input[type="time"]:focus {
+        input[type="text"]:focus, input[type="time"]:focus, input[type="number"]:focus {
             border-color: var(--primary-color);
         }
         button {
@@ -124,6 +125,32 @@
             opacity: 1;
             visibility: visible;
         }
+        /* Pomodoro Overlay Styles */
+        #overlay {
+            position: fixed; top:0; left:0; right:0; bottom:0;
+            background: black; color: white; display: none;
+            justify-content: center; align-items: center;
+            font-size: 60px; flex-direction: column;
+            z-index: 9999;
+        }
+        #overlay small { font-size: 20px; margin-top: 10px; }
+        #pomodoroSection button { margin:5px; }
+        #timer { font-size:48px; margin:20px; }
+        #pomodoroSetGroup {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        #pomodoroSetGroup input[type="number"] {
+            width: 60px;
+            margin-left: 5px;
+            margin-right: 5px;
+            border-radius: 5px;
+        }
+        #pomodoroSetGroup label {
+            margin-right: 5px;
+        }
     </style>
 </head>
 <body>
@@ -144,6 +171,24 @@
         <button id="setAlarmBtn">Set</button>
     </div>
     <audio id="alarmSound" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" preload="auto"></audio>
+
+    <!-- Pomodoro Timer Section -->
+    <h3>Pomodoro Timer</h3>
+    <div id="pomodoroSection" style="text-align:center; margin-bottom:30px;">
+        <div id="pomodoroSetGroup">
+            <label for="pomodoroMinutes">Set minutes:</label>
+            <input type="number" id="pomodoroMinutes" min="1" max="180" value="25">
+            <button onclick="setPomodoro()">Set</button>
+        </div>
+        <div id="timer">25:00</div>
+        <button onclick="startPause()">Start/Pause</button>
+        <button onclick="reset()">Reset</button>
+        <button onclick="lockScreen()">Screen Lock</button>
+    </div>
+    <div id="overlay" onclick="unlockScreen()">
+        <div id="lockTimer">25:00</div>
+        <small>(Click anywhere to unlock)</small>
+    </div>
 </div>
 <div id="notification"></div>
 
@@ -164,10 +209,8 @@
     // --- Data Persistence Layer ---
     const saveData = () => {
         if (isNativeApp) {
-            // Use the robust native storage
             window.AndroidBridge.saveLessons(JSON.stringify(lessons));
         } else {
-            // Fallback to localStorage for web browsers
             localStorage.setItem('studyPlannerLessons', JSON.stringify(lessons));
         }
     };
@@ -182,7 +225,7 @@
         renderLessons();
     };
 
-    // --- UI Rendering (largely unchanged) ---
+    // --- UI Rendering ---
     const renderLessons = () => {
         lessonList.innerHTML = '';
         if (lessons.length === 0) {
@@ -253,22 +296,18 @@
         const now = new Date();
         const alarmDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0);
 
-        // If alarm time is in the past for today, schedule it for tomorrow
         if (alarmDate < now) {
             alarmDate.setDate(alarmDate.getDate() + 1);
         }
 
         const alarmTimestamp = alarmDate.getTime();
-        const lessonNameForAlarm = "Time to study!"; // Or get from input
+        const lessonNameForAlarm = "Time to study!";
 
         if (isNativeApp) {
-            // Delegate to the reliable native AlarmManager
             window.AndroidBridge.setAlarm(alarmTimestamp, lessonNameForAlarm);
             window.AndroidBridge.showToast(`Alarm set for ${alarmDate.toLocaleTimeString()}`);
         } else {
-            // The less reliable web-based alarm (for browser fallback)
             alert(`In a real app, this would set a native alarm.\nAlarm set for ${alarmDate.toLocaleTimeString()}`);
-            // The original setInterval logic would go here as a fallback
         }
     };
 
@@ -279,8 +318,87 @@
     });
     setAlarmBtn.addEventListener('click', setAlarm);
 
-    // Initial load of data
     loadData();
+
+    // ---- Pomodoro Timer Logic ----
+    const pomodoroInput = document.getElementById('pomodoroMinutes');
+    let initialTime = parseInt(pomodoroInput.value) * 60;
+    let time = initialTime;
+    let timer, running = false;
+    const timerEl = document.getElementById("timer");
+    const lockTimerEl = document.getElementById("lockTimer");
+    let overtime = false;
+
+    function update(){
+      if (time >= 0) {
+        let m = String(Math.floor(time/60)).padStart(2,'0');
+        let s = String(time%60).padStart(2,'0');
+        timerEl.textContent = m+":"+s;
+        lockTimerEl.textContent = m+":"+s;
+      } else {
+        let absTime = Math.abs(time);
+        let m = String(Math.floor(absTime/60)).padStart(2,'0');
+        let s = String(absTime%60).padStart(2,'0');
+        timerEl.textContent = "+" + m + ":" + s;
+        lockTimerEl.textContent = "+" + m + ":" + s;
+      }
+    }
+
+    function tick(){
+      if(time > 0){
+        time--;
+        update();
+        if (time === 0) {
+          alert("Break Time!");
+          overtime = true;
+        }
+      } else {
+        time--;
+        update();
+      }
+    }
+
+    window.startPause = function(){
+      if(running){
+        clearInterval(timer);
+        running = false;
+      } else {
+        timer = setInterval(tick, 1000);
+        running = true;
+      }
+    }
+
+    window.reset = function(){
+      clearInterval(timer);
+      running = false;
+      time = initialTime;
+      overtime = false;
+      update();
+    }
+
+    window.lockScreen = function(){
+      document.getElementById("overlay").style.display="flex";
+    }
+    window.unlockScreen = function(){
+      document.getElementById("overlay").style.display="none";
+    }
+
+    window.setPomodoro = function(){
+      let minutes = parseInt(pomodoroInput.value);
+      if (isNaN(minutes) || minutes < 1 || minutes > 180) {
+        alert("Please enter a valid number of minutes (1-180).");
+        pomodoroInput.value = "25";
+        minutes = 25;
+      }
+      initialTime = minutes * 60;
+      time = initialTime;
+      overtime = false;
+      clearInterval(timer);
+      running = false;
+      update();
+    }
+
+    update();
 });
 </script>
 </body>
