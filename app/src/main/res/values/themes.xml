@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.androidWebViewOfflineApplication" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <style name="Theme.App.Starting" parent="Theme.SplashScreen">
+        <!-- Set the splash screen background, animated icon, and destination theme. -->
+        <item name="windowSplashScreenBackground">#FF1C1C2E</item> <!-- A solid color matching your app -->
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item> <!-- Your app logo -->
+        <item name="postSplashScreenTheme">@style/Theme.androidWebViewOfflineApplication</item> <!-- The theme for your main activity -->
+    </style>
+
+</resources>
+

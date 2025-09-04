@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Study Planner</title>
+    <style>
+        :root {
+            --primary-color: #007bff;
+            --background-color: #f0f2f5;
+            --container-bg: #ffffff;
+            --text-color: #333;
+            --border-color: #ddd;
+            --shadow-color: rgba(0,0,0,0.1);
+            --danger-color: #dc3545;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 20px;
+            background: var(--background-color);
+            color: var(--text-color);
+            line-height: 1.6;
+        }
+        h1, h3 {
+            text-align: center;
+            color: var(--text-color);
+            font-weight: 300;
+        }
+        .container {
+            max-width: 600px;
+            margin: auto;
+            background: var(--container-bg);
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px var(--shadow-color);
+        }
+        .input-group {
+            display: flex;
+            margin-bottom: 20px;
+        }
+        input[type="text"], input[type="time"] {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 5px 0 0 5px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input[type="text"]:focus, input[type="time"]:focus {
+            border-color: var(--primary-color);
+        }
+        button {
+            padding: 10px 15px;
+            border: none;
+            background-color: var(--primary-color);
+            color: white;
+            cursor: pointer;
+            border-radius: 0 5px 5px 0;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            padding: 12px 8px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: background-color 0.2s;
+        }
+        li:last-child {
+            border-bottom: none;
+        }
+        li:hover {
+            background-color: #f9f9f9;
+        }
+        .lesson-content {
+            display: flex;
+            align-items: center;
+            flex: 1;
+        }
+        .lesson-content input[type="checkbox"] {
+            margin-right: 12px;
+            cursor: pointer;
+        }
+        .lesson-content .lesson-label {
+            flex: 1;
+        }
+        .lesson-content .lesson-label.done {
+            text-decoration: line-through;
+            color: #888;
+        }
+        .delete-btn {
+            background: none;
+            border: none;
+            color: var(--danger-color);
+            cursor: pointer;
+            font-size: 1.2em;
+            opacity: 0.5;
+            transition: opacity 0.2s;
+        }
+        .delete-btn:hover {
+            opacity: 1;
+        }
+        #notification {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #333;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s, visibility 0.3s;
+        }
+        #notification.show {
+            opacity: 1;
+            visibility: visible;
+        }
+    </style>
+</head>
+<body>
+<h1>Study Planner</h1>
+<div class="container">
+    <h3>Add Lesson</h3>
+    <div class="input-group">
+        <input type="text" id="lessonInput" placeholder="Enter lesson name">
+        <button id="addLessonBtn">Add</button>
+    </div>
+
+    <h3>Time Table</h3>
+    <ul id="lessonList"></ul>
+
+    <h3>Set Alarm</h3>
+    <div class="input-group">
+        <input type="time" id="alarmTimeInput">
+        <button id="setAlarmBtn">Set</button>
+    </div>
+    <audio id="alarmSound" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" preload="auto"></audio>
+</div>
+<div id="notification"></div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+    // --- UI Element References ---
+    const lessonInput = document.getElementById('lessonInput');
+    const addLessonBtn = document.getElementById('addLessonBtn');
+    const lessonList = document.getElementById('lessonList');
+    const alarmTimeInput = document.getElementById('alarmTimeInput');
+    const setAlarmBtn = document.getElementById('setAlarmBtn');
+
+    // --- State & Bridge Detection ---
+    let lessons = [];
+    // The 'AndroidBridge' object is injected by the native Android code.
+    const isNativeApp = window.AndroidBridge !== undefined;
+
+    // --- Data Persistence Layer ---
+    const saveData = () => {
+        if (isNativeApp) {
+            // Use the robust native storage
+            window.AndroidBridge.saveLessons(JSON.stringify(lessons));
+        } else {
+            // Fallback to localStorage for web browsers
+            localStorage.setItem('studyPlannerLessons', JSON.stringify(lessons));
+        }
+    };
+
+    const loadData = () => {
+        if (isNativeApp) {
+            const lessonsJson = window.AndroidBridge.loadLessons();
+            lessons = lessonsJson ? JSON.parse(lessonsJson) : [];
+        } else {
+            lessons = JSON.parse(localStorage.getItem('studyPlannerLessons')) || [];
+        }
+        renderLessons();
+    };
+
+    // --- UI Rendering (largely unchanged) ---
+    const renderLessons = () => {
+        lessonList.innerHTML = '';
+        if (lessons.length === 0) {
+            lessonList.innerHTML = '<li>No lessons yet. Add one!</li>';
+            return;
+        }
+        lessons.forEach((lesson, index) => {
+            const li = document.createElement('li');
+            li.dataset.index = index;
+
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'lesson-content';
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = lesson.done;
+            checkbox.addEventListener('change', () => toggleDone(index));
+
+            const label = document.createElement('span');
+            label.textContent = lesson.name;
+            label.className = 'lesson-label';
+            if (lesson.done) label.classList.add('done');
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'delete-btn';
+            deleteBtn.innerHTML = '&times;';
+            deleteBtn.addEventListener('click', () => deleteLesson(index));
+
+            contentDiv.appendChild(checkbox);
+            contentDiv.appendChild(label);
+            li.appendChild(contentDiv);
+            li.appendChild(deleteBtn);
+            lessonList.appendChild(li);
+        });
+    };
+
+    // --- Core Logic ---
+    const addLesson = () => {
+        const lessonName = lessonInput.value.trim();
+        if (lessonName === "") return;
+        lessons.push({ name: lessonName, done: false });
+        saveData();
+        renderLessons();
+        lessonInput.value = '';
+        lessonInput.focus();
+    };
+
+    const toggleDone = (index) => {
+        lessons[index].done = !lessons[index].done;
+        saveData();
+        renderLessons();
+    };
+
+    const deleteLesson = (index) => {
+        lessons.splice(index, 1);
+        saveData();
+        renderLessons();
+    };
+
+    const setAlarm = () => {
+        const timeValue = alarmTimeInput.value;
+        if (!timeValue) {
+            if (isNativeApp) window.AndroidBridge.showToast("Please set a valid time!");
+            return;
+        }
+
+        const [hours, minutes] = timeValue.split(':');
+        const now = new Date();
+        const alarmDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0);
+
+        // If alarm time is in the past for today, schedule it for tomorrow
+        if (alarmDate < now) {
+            alarmDate.setDate(alarmDate.getDate() + 1);
+        }
+
+        const alarmTimestamp = alarmDate.getTime();
+        const lessonNameForAlarm = "Time to study!"; // Or get from input
+
+        if (isNativeApp) {
+            // Delegate to the reliable native AlarmManager
+            window.AndroidBridge.setAlarm(alarmTimestamp, lessonNameForAlarm);
+            window.AndroidBridge.showToast(`Alarm set for ${alarmDate.toLocaleTimeString()}`);
+        } else {
+            // The less reliable web-based alarm (for browser fallback)
+            alert(`In a real app, this would set a native alarm.\nAlarm set for ${alarmDate.toLocaleTimeString()}`);
+            // The original setInterval logic would go here as a fallback
+        }
+    };
+
+    // --- Event Listeners & Initialization ---
+    addLessonBtn.addEventListener('click', addLesson);
+    lessonInput.addEventListener('keyup', (event) => {
+        if (event.key === 'Enter') addLesson();
+    });
+    setAlarmBtn.addEventListener('click', setAlarm);
+
+    // Initial load of data
+    loadData();
+});
+</script>
+</body>
+</html>
